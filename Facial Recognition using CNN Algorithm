@@ -30,7 +30,12 @@ cap.release()
 cv2.destroyAllWindows()
 print(f"Saved {count} images to {save_path}")
 
+
+
 # After running this code it will save the image in folder dataset, then we will run deep learning code using CNN algorithm.
+
+
+
 import cv2
 import numpy as np
 import os
