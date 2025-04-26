@@ -1,0 +1,126 @@
+import cv2
+import os
+
+name = "gokul"  # Change this to your name
+save_path = f"dataset/{name}"
+os.makedirs(save_path, exist_ok=True)
+
+cap = cv2.VideoCapture(0)
+count = 0
+
+while count < 30:  # Capture 30 images
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    for (x, y, w, h) in faces:
+        face_img = gray[y:y+h, x:x+w]
+        cv2.imwrite(f"{save_path}/face_{count}.jpg", face_img)
+        count += 1
+    
+    cv2.imshow("Collecting Images", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+print(f"Saved {count} images to {save_path}")
+
+# After running this code it will save the image in folder dataset, then we will run deep learning code using CNN algorithm.
+import cv2
+import numpy as np
+import os
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+
+# === Step 1: Load Dataset ===
+DATASET_PATH = "dataset"
+IMG_SIZE = 100
+
+def load_dataset():
+    images = []
+    labels = []
+    label_map = {}
+
+    person_folders = os.listdir(DATASET_PATH)
+    for label, person in enumerate(person_folders):
+        label_map[label] = person
+        person_path = os.path.join(DATASET_PATH, person)
+        for img_name in os.listdir(person_path):
+            img_path = os.path.join(person_path, img_name)
+            img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+            img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+            images.append(img)
+            labels.append(label)
+
+    images = np.array(images).reshape(-1, IMG_SIZE, IMG_SIZE, 1) / 255.0
+    labels = np.array(labels)
+
+    return images, labels, label_map
+
+# Load dataset
+X, y, label_map = load_dataset()
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# === Step 2: Create CNN Model ===
+model = Sequential([
+    Conv2D(32, (3,3), activation='relu', input_shape=(IMG_SIZE, IMG_SIZE, 1)),
+    MaxPooling2D(2,2),
+    Conv2D(64, (3,3), activation='relu'),
+    MaxPooling2D(2,2),
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dense(len(label_map), activation='softmax')  # Output layer (number of people)
+])
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+# === Step 3: Train Model ===
+history = model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test))
+
+# Save the trained model
+model.save("face_recognition_model.keras")
+
+# === Step 4: Load the Model for Real-Time Recognition ===
+model = tf.keras.models.load_model("face_recognition_model.keras")
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+# === Step 5: Start Webcam & Detect Faces ===
+cap = cv2.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    for (x, y, w, h) in faces:
+        face_roi = gray[y:y+h, x:x+w]
+        face_roi = cv2.resize(face_roi, (IMG_SIZE, IMG_SIZE))
+        face_roi = face_roi.reshape(1, IMG_SIZE, IMG_SIZE, 1) / 255.0
+
+        prediction = model.predict(face_roi)
+        label = np.argmax(prediction)
+        person_name = label_map.get(label, "Unknown")
+    
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.putText(frame, person_name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
+    cv2.imshow("Face Recognition", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+
